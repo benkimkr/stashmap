@@ -1,7 +1,7 @@
 'use strict';
 
 const KAKAO_JS_KEY   = 'f7de42f6f30f90f4cd48b807c40608be';
-const KAKAO_REST_KEY = 'c4ba953ded83884b69a66c084cd77317';
+const KAKAO_REST_KEY = '492b7caf7e437f6115c9deee9529a2b3';
 const KAKAO_REDIRECT = 'https://stashmap-iota.vercel.app';
 
 // ── Firebase (동일 프로젝트, 컬렉션명 분리) ──────────────────────────────────
