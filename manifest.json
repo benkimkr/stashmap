@@ -1,0 +1,26 @@
+{
+  "name": "Stashmap",
+  "short_name": "Stashmap",
+  "description": "나만의 패션 스팟 지도",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0c0c0c",
+  "theme_color": "#c9a87c",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

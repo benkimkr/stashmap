@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#c9a87c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Stashmap">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <title>Stashmap</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="map"></div>
+
+  <!-- 헤더 -->
+  <header class="hud-header">
+    <div class="logo-pill">
+      <span class="logo">STASHMAP</span>
+    </div>
+    <div class="hud-right">
+      <div class="pin-badge" id="pin-badge">0 SPOTS</div>
+      <div class="profile-wrap" id="profile-wrap">
+        <button class="user-avatar hidden" id="user-avatar" onclick="toggleProfileMenu()"></button>
+        <div class="profile-menu hidden" id="profile-menu">
+          <div class="pm-profile">
+            <div class="pm-avatar" id="pm-avatar"></div>
+            <div class="pm-info">
+              <span class="pm-name" id="pm-name"></span>
+              <span class="pm-count" id="pm-count">저장한 매장 0곳</span>
+            </div>
+          </div>
+          <div class="pm-divider"></div>
+          <button class="pm-logout" onclick="logout()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+            로그아웃
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 검색 -->
+  <div class="search-wrap" id="search-wrap">
+    <div class="search-bar">
+      <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+      </svg>
+      <input type="search" id="search-input" placeholder="매장 검색..."
+             autocomplete="off" autocorrect="off" spellcheck="false" />
+      <button class="btn-sc hidden" id="btn-sc" onclick="clearSearch()">✕</button>
+    </div>
+    <ul class="search-drop hidden" id="search-drop"></ul>
+  </div>
+
+  <!-- 추가 모드 배너 -->
+  <div class="add-banner hidden" id="add-banner">
+    <span>지도를 탭해서 핀을 꽂아주세요</span>
+    <button onclick="cancelAddMode()">취소</button>
+  </div>
+
+  <!-- FAB -->
+  <button class="btn-fab" id="btn-fab" onclick="onFabClick()">
+    <svg id="fab-plus" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+    </svg>
+    <svg id="fab-x" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+    </svg>
+  </button>
+
+  <!-- 내 위치 -->
+  <button class="btn-myloc" onclick="goMyLocation()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+    </svg>
+  </button>
+
+  <!-- 줌 -->
+  <div class="zoom-ctrl">
+    <button class="btn-zoom" id="btn-zoomin">+</button>
+    <button class="btn-zoom" id="btn-zoomout">−</button>
+  </div>
+
+  <!-- 바텀시트 -->
+  <div class="sheet" id="sheet">
+    <div class="sheet-drag" id="sheet-drag">
+      <div class="sheet-handle"></div>
+    </div>
+
+    <!-- 보기 패널 -->
+    <div class="s-panel" id="p-view">
+      <div class="sv-toprow">
+        <div>
+          <div class="sv-cat" id="sv-cat"></div>
+          <h2 class="sv-name" id="sv-name"></h2>
+          <p class="sv-addr" id="sv-addr"></p>
+        </div>
+        <button class="btn-sx" onclick="closeSheet()">✕</button>
+      </div>
+      <div class="sv-photos" id="sv-photos"></div>
+      <div class="sv-meta-row">
+        <span class="sv-status" id="sv-status"></span>
+        <span class="sv-price" id="sv-price"></span>
+      </div>
+      <div class="sv-meta">
+        <span class="sv-date" id="sv-date"></span>
+        <p class="sv-memo" id="sv-memo"></p>
+      </div>
+      <div class="sv-btns">
+        <a class="sv-btn" id="sv-maplink" href="#" target="_blank" rel="noopener">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>
+          지도
+        </a>
+        <button class="sv-btn" onclick="toggleStatus()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          상태
+        </button>
+        <button class="sv-btn" onclick="shareActive()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/></svg>
+          공유
+        </button>
+        <button class="sv-btn sv-del" onclick="deleteActive()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          삭제
+        </button>
+      </div>
+    </div>
+
+    <!-- 추가 패널 -->
+    <div class="s-panel hidden" id="p-add">
+      <div class="sa-toprow">
+        <h3>새 스팟 추가</h3>
+        <button class="btn-sx" onclick="cancelAdd()">✕</button>
+      </div>
+
+      <input class="s-inp" type="text" id="add-name" placeholder="매장명" autocomplete="off" />
+      <p class="add-addr-hint" id="add-addr"></p>
+
+      <div class="cat-pills" id="cat-pills"></div>
+
+      <!-- 사진 탭 -->
+      <div class="s-tabs">
+        <button class="s-tab active" data-stab="store" onclick="switchAddTab('store')">매장 사진</button>
+        <button class="s-tab" data-stab="item" onclick="switchAddTab('item')">아이템 사진</button>
+      </div>
+
+      <div class="s-tabp" id="sp-store">
+        <div class="s-upzone" id="store-upzone">
+          <input type="file" id="store-inp" accept="image/*" hidden />
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="var(--tmut)"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+          <p>매장 사진 추가</p>
+          <span class="hint">JPG · PNG · WEBP</span>
+        </div>
+        <div class="s-mprev" id="store-prev"></div>
+      </div>
+
+      <div class="s-tabp hidden" id="sp-item">
+        <div class="s-upzone" id="item-upzone">
+          <input type="file" id="item-inp" accept="image/*" hidden />
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="var(--tmut)"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+          <p>아이템 사진 추가</p>
+          <span class="hint">킵하고 싶은 아이템을 담아요</span>
+        </div>
+        <div class="s-mprev" id="item-prev"></div>
+      </div>
+
+      <!-- 브랜드 + 가격 -->
+      <div class="s-row">
+        <input class="s-inp" type="text" id="add-brand" placeholder="브랜드 / 아이템명" autocomplete="off" />
+        <input class="s-inp" type="text" id="add-price" placeholder="가격" inputmode="numeric" autocomplete="off" />
+      </div>
+
+      <!-- 상태 토글 -->
+      <div class="status-toggle">
+        <button class="st-btn active" id="st-keep"   onclick="setStatus('keep')">KEEP</button>
+        <button class="st-btn"        id="st-bought" onclick="setStatus('bought')">BOUGHT</button>
+      </div>
+
+      <select class="s-inp s-sel" id="add-collection">
+        <option value="">개인 스태시</option>
+      </select>
+      <input class="s-inp" type="date" id="add-date" />
+      <textarea class="s-inp s-ta" id="add-memo" placeholder="메모 (선택)"></textarea>
+
+      <div class="sa-btns">
+        <button class="btn-cancel" onclick="cancelAdd()">취소</button>
+        <button class="btn-save" id="btn-save" onclick="saveCard()">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 피드 뷰 -->
+  <div class="feed-view hidden" id="feed-view">
+    <div class="feed-filter-bar" id="feed-filter-bar"></div>
+    <div class="feed-list" id="feed-list"></div>
+  </div>
+
+  <!-- 컬렉션 뷰 -->
+  <div class="coll-view hidden" id="coll-view">
+    <div class="coll-topbar">
+      <h2 class="coll-title">컬렉션</h2>
+      <button class="btn-coll-new" onclick="showCreateCollection()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        새 컬렉션
+      </button>
+    </div>
+    <div class="coll-list" id="coll-list"></div>
+  </div>
+
+  <!-- 탭 바 -->
+  <nav class="tab-bar">
+    <button class="tab-btn active" id="tab-map" onclick="switchTab('map')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/>
+      </svg>
+      <span>MAP</span>
+    </button>
+    <button class="tab-btn" id="tab-feed" onclick="switchTab('feed')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/>
+      </svg>
+      <span>STASH</span>
+    </button>
+    <button class="tab-btn" id="tab-coll" onclick="switchTab('collections')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+      </svg>
+      <span>LIST</span>
+    </button>
+  </nav>
+
+  <!-- 토스트 -->
+  <div class="toast hidden" id="toast"></div>
+
+  <!-- 새 컬렉션 모달 -->
+  <div class="modal-overlay hidden" id="create-coll-modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>새 컬렉션</h3>
+        <button class="btn-sx" onclick="closeCreateCollection()">✕</button>
+      </div>
+      <input class="s-inp" id="coll-name-inp" type="text" placeholder="예: 도쿄 빈티지, 성수 셀렉샵" autocomplete="off" />
+      <div class="modal-btns">
+        <button class="btn-cancel" onclick="closeCreateCollection()">취소</button>
+        <button class="btn-save" onclick="saveCollection()">만들기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 초대 모달 -->
+  <div class="modal-overlay hidden" id="invite-modal">
+    <div class="modal-card">
+      <div class="modal-head"><h3>컬렉션 초대</h3></div>
+      <p class="invite-msg" id="invite-msg"></p>
+      <div class="modal-btns">
+        <button class="btn-cancel" onclick="declineInvite()">거절</button>
+        <button class="btn-save" id="btn-accept-invite" onclick="acceptInvite()">참여하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 로그인 -->
+  <div class="login-screen hidden" id="login-screen">
+    <div class="login-card">
+      <div class="login-brand">
+        <span class="login-logo">STASHMAP</span>
+        <p class="login-sub">나만의 패션 스팟 지도</p>
+      </div>
+      <button class="btn-kakao" id="btn-kakao" onclick="loginWithKakao()">
+        <svg width="20" height="18" viewBox="0 0 20 18" fill="currentColor">
+          <path d="M10 0C4.48 0 0 3.36 0 7.5c0 2.65 1.68 4.98 4.24 6.43L3.26 17.5l4.5-2.3c.73.14 1.47.21 2.24.21 5.52 0 10-3.36 10-7.5S15.52 0 10 0z"/>
+        </svg>
+        카카오로 시작하기
+      </button>
+      <p class="login-popup-hint" id="login-popup-hint"></p>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://developers.kakao.com/sdk/js/kakao.js"></script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=a0a94073377626348a12a0473d152c0c&libraries=services"></script>
+  <script src="script.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
