@@ -1,6 +1,8 @@
 'use strict';
 
-const KAKAO_JS_KEY = 'a0a94073377626348a12a0473d152c0c';
+const KAKAO_JS_KEY   = 'a0a94073377626348a12a0473d152c0c';
+const KAKAO_REST_KEY = 'c4ba953ded83884b69a66c084cd77317';
+const KAKAO_REDIRECT = 'https://stashmap-iota.vercel.app';
 
 // ── Firebase (동일 프로젝트, 컬렉션명 분리) ──────────────────────────────────
 const firebaseConfig = {
@@ -142,11 +144,18 @@ function initAuth() {
   if (!Kakao.isInitialized()) Kakao.init(KAKAO_JS_KEY);
 
   const params = new URLSearchParams(location.search);
+  const code   = params.get('code');
   const invite = params.get('invite');
-  if (invite) {
-    localStorage.setItem('stashmap_pending_invite', invite);
+
+  if (invite) localStorage.setItem('stashmap_pending_invite', invite);
+
+  if (code) {
     history.replaceState({}, '', location.pathname);
+    handleOAuthCallback(code);
+    return;
   }
+
+  if (invite) history.replaceState({}, '', location.pathname);
 
   const stored = localStorage.getItem('stashmap_user');
   if (stored) {
@@ -164,38 +173,45 @@ function setPopupHint(msg) {
 }
 
 function loginWithKakao() {
-  const btn = document.getElementById('btn-kakao');
-  if (btn.classList.contains('loading')) return;
-  btn.classList.add('loading');
-  setPopupHint('');
+  const url = new URL('https://kauth.kakao.com/oauth/authorize');
+  url.searchParams.set('client_id',    KAKAO_REST_KEY);
+  url.searchParams.set('redirect_uri', KAKAO_REDIRECT);
+  url.searchParams.set('response_type', 'code');
+  window.location.href = url.toString();
+}
 
-  Kakao.Auth.login({
-    success: async authObj => {
-      try {
-        const res = await fetch('https://kapi.kakao.com/v2/user/me', {
-          headers: { Authorization: `Bearer ${authObj.access_token}` },
-        });
-        const userData = await res.json();
-        if (userData.code < 0) throw new Error(`사용자 조회 실패 (${userData.code})`);
-        currentUser = {
-          id:           String(userData.id),
-          nickname:     userData.kakao_account?.profile?.nickname || '사용자',
-          profileImage: userData.kakao_account?.profile?.thumbnail_image_url || null,
-        };
-        localStorage.setItem('stashmap_user', JSON.stringify(currentUser));
-        btn.classList.remove('loading');
-        onAuthReady();
-      } catch (e) {
-        btn.classList.remove('loading');
-        setPopupHint('⚠️ ' + e.message);
-      }
-    },
-    fail: err => {
-      btn.classList.remove('loading');
-      if (err && err.error === 'access_denied') return;
-      setPopupHint('⚠️ 팝업이 차단됐어요. 팝업 허용 후 다시 시도해주세요.');
-    },
-  });
+async function handleOAuthCallback(code) {
+  try {
+    const tokenRes = await fetch('https://kauth.kakao.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
+      body: new URLSearchParams({
+        grant_type:   'authorization_code',
+        client_id:    KAKAO_REST_KEY,
+        redirect_uri: KAKAO_REDIRECT,
+        code,
+      }),
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.error_description || '토큰 오류');
+
+    const userRes = await fetch('https://kapi.kakao.com/v2/user/me', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+    const userData = await userRes.json();
+    if (userData.code < 0) throw new Error(`사용자 조회 실패 (${userData.code})`);
+
+    currentUser = {
+      id:           String(userData.id),
+      nickname:     userData.kakao_account?.profile?.nickname || '사용자',
+      profileImage: userData.kakao_account?.profile?.thumbnail_image_url || null,
+    };
+    localStorage.setItem('stashmap_user', JSON.stringify(currentUser));
+    onAuthReady();
+  } catch (e) {
+    showLoginScreen();
+    setPopupHint('⚠️ ' + e.message);
+  }
 }
 
 function onAuthReady() {
