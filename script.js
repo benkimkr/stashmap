@@ -1,6 +1,6 @@
 'use strict';
 
-const KAKAO_JS_KEY   = '7c3254acba8f979019587bd5363d2d55';
+const KAKAO_JS_KEY   = 'f7de42f6f30f90f4cd48b807c40608be';
 const KAKAO_REST_KEY = 'c4ba953ded83884b69a66c084cd77317';
 const KAKAO_REDIRECT = 'https://stashmap-iota.vercel.app';
 
