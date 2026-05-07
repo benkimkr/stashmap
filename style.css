@@ -322,7 +322,10 @@ html, body {
   display: flex; flex-direction: column; align-items: center;
   filter: drop-shadow(0 3px 8px rgba(0,0,0,.6));
   cursor: pointer; transition: filter .15s;
+  position: relative; z-index: 1;
 }
+.map-pin.is-active { z-index: 10; }
+.map-pin.pin-temp  { z-index: 20; }
 .map-pin:hover { filter: drop-shadow(0 4px 14px rgba(0,0,0,.75)); }
 
 .pin-bub {

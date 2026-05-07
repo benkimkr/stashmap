@@ -1,10 +1,9 @@
 'use strict';
 
-const KAKAO_JS_KEY   = 'f7de42f6f30f90f4cd48b807c40608be';
 const KAKAO_REST_KEY = '492b7caf7e437f6115c9deee9529a2b3';
 const KAKAO_REDIRECT = 'https://stashmap-iota.vercel.app';
 
-// ── Firebase (동일 프로젝트, 컬렉션명 분리) ──────────────────────────────────
+// ── Firebase ──────────────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey:            'AIzaSyBcTMKjYDFOZ0MK7dvCJEkj-4aZzRub1L0',
   authDomain:        'placelog-75bbe.firebaseapp.com',
@@ -53,6 +52,63 @@ const photoDB = (() => {
   });
   return { open, save, get, remove };
 })();
+
+// ── 구글 맵 커스텀 오버레이 ───────────────────────────────────────────────────
+class PinOverlay extends google.maps.OverlayView {
+  constructor(position, el) {
+    super();
+    this._pos = position;
+    this._el  = el;
+  }
+  onAdd() {
+    this.getPanes().overlayMouseTarget.appendChild(this._el);
+  }
+  draw() {
+    const proj = this.getProjection();
+    if (!proj) return;
+    const pt = proj.fromLatLngToDivPixel(this._pos);
+    if (!pt) return;
+    const s     = this._el.style;
+    s.position  = 'absolute';
+    s.left      = `${pt.x}px`;
+    s.top       = `${pt.y}px`;
+    s.transform = 'translate(-50%, -100%)';
+  }
+  onRemove() { this._el.parentNode?.removeChild(this._el); }
+  setContent(el) {
+    if (this._el.parentNode) this._el.parentNode.replaceChild(el, this._el);
+    this._el = el;
+    this.draw();
+  }
+  setPosition(pos) { this._pos = pos; this.draw(); }
+  getPosition()    { return this._pos; }
+}
+
+// ── 다크 맵 스타일 ────────────────────────────────────────────────────────────
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry',            stylers: [{ color: '#1a1a1a' }] },
+  { elementType: 'labels.icon',         stylers: [{ visibility: 'off' }] },
+  { elementType: 'labels.text.fill',    stylers: [{ color: '#666666' }] },
+  { elementType: 'labels.text.stroke',  stylers: [{ color: '#0c0c0c' }] },
+  { featureType: 'administrative',           elementType: 'geometry',          stylers: [{ color: '#252525' }] },
+  { featureType: 'administrative.country',   elementType: 'labels.text.fill',  stylers: [{ color: '#888888' }] },
+  { featureType: 'administrative.land_parcel',                                 stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.locality',  elementType: 'labels.text.fill',  stylers: [{ color: '#bbbbbb' }] },
+  { featureType: 'poi',                      elementType: 'geometry',          stylers: [{ color: '#1e1e1e' }] },
+  { featureType: 'poi',                      elementType: 'labels.text.fill',  stylers: [{ color: '#555555' }] },
+  { featureType: 'poi.park',                 elementType: 'geometry',          stylers: [{ color: '#161b16' }] },
+  { featureType: 'poi.park',                 elementType: 'labels.text.fill',  stylers: [{ color: '#3d5c3d' }] },
+  { featureType: 'road',                     elementType: 'geometry',          stylers: [{ color: '#2c2c2c' }] },
+  { featureType: 'road',                     elementType: 'geometry.stroke',   stylers: [{ color: '#1a1a1a' }] },
+  { featureType: 'road',                     elementType: 'labels.text.fill',  stylers: [{ color: '#777777' }] },
+  { featureType: 'road.highway',             elementType: 'geometry',          stylers: [{ color: '#3c3c3c' }] },
+  { featureType: 'road.highway',             elementType: 'geometry.stroke',   stylers: [{ color: '#222222' }] },
+  { featureType: 'road.highway',             elementType: 'labels.text.fill',  stylers: [{ color: '#999999' }] },
+  { featureType: 'transit',                  elementType: 'geometry',          stylers: [{ color: '#1a1a1a' }] },
+  { featureType: 'transit.station',          elementType: 'labels.text.fill',  stylers: [{ color: '#555555' }] },
+  { featureType: 'water',                    elementType: 'geometry',          stylers: [{ color: '#0d0f12' }] },
+  { featureType: 'water',                    elementType: 'labels.text.fill',  stylers: [{ color: '#3a3a3a' }] },
+];
 
 // ── 상태 ─────────────────────────────────────────────────────────────────────
 let map;
@@ -141,8 +197,6 @@ function subscribeToCollections() {
 
 // ── 인증 ─────────────────────────────────────────────────────────────────────
 function initAuth() {
-  if (!Kakao.isInitialized()) Kakao.init(KAKAO_JS_KEY);
-
   const params = new URLSearchParams(location.search);
   const code   = params.get('code');
   const invite = params.get('invite');
@@ -300,19 +354,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ── 지도 ─────────────────────────────────────────────────────────────────────
 function initMap() {
-  map = new kakao.maps.Map(document.getElementById('map'), {
-    center: new kakao.maps.LatLng(37.5665, 126.9780),
-    level: 6,
+  map = new google.maps.Map(document.getElementById('map'), {
+    center:           { lat: 37.5665, lng: 126.9780 },
+    zoom:             12,
+    disableDefaultUI: true,
+    gestureHandling:  'greedy',
+    clickableIcons:   false,
+    styles:           DARK_MAP_STYLE,
   });
+
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
-      p => { map.setCenter(new kakao.maps.LatLng(p.coords.latitude, p.coords.longitude)); map.setLevel(4); },
+      p => { map.setCenter({ lat: p.coords.latitude, lng: p.coords.longitude }); map.setZoom(14); },
       () => {}
     );
   }
-  kakao.maps.event.addListener(map, 'click', e => { if (addMode) placeTempPin(e.latLng); });
-  document.getElementById('btn-zoomin').onclick  = () => map.setLevel(map.getLevel() - 1);
-  document.getElementById('btn-zoomout').onclick = () => map.setLevel(map.getLevel() + 1);
+
+  map.addListener('click', e => { if (addMode) placeTempPin(e.latLng); });
+  document.getElementById('btn-zoomin').onclick  = () => map.setZoom(map.getZoom() + 1);
+  document.getElementById('btn-zoomout').onclick = () => map.setZoom(map.getZoom() - 1);
 }
 
 function makeOverlayContent(cat, active, clickId) {
@@ -342,11 +402,9 @@ function refreshPins() {
 }
 
 function addPin(card) {
+  const pos     = new google.maps.LatLng(card.lat, card.lon);
   const content = makeOverlayContent(card.category, false, card.id);
-  const overlay = new kakao.maps.CustomOverlay({
-    position: new kakao.maps.LatLng(card.lat, card.lon),
-    content, xAnchor: 0.5, yAnchor: 1, clickable: true, zIndex: 1,
-  });
+  const overlay = new PinOverlay(pos, content);
   overlay.setMap(map);
   markers[card.id] = overlay;
 }
@@ -366,6 +424,7 @@ function startAddMode() {
   document.getElementById('fab-x').classList.remove('hidden');
   document.getElementById('map').classList.add('add-mode');
   document.getElementById('search-wrap').classList.add('hidden');
+  map.setOptions({ draggableCursor: 'crosshair' });
   clearSearch(); closeSheet();
 }
 
@@ -377,6 +436,7 @@ function cancelAddMode() {
   document.getElementById('fab-x').classList.add('hidden');
   document.getElementById('map').classList.remove('add-mode');
   document.getElementById('search-wrap').classList.remove('hidden');
+  map.setOptions({ draggableCursor: '' });
   clearTempPin(); closeSheet();
 }
 
@@ -389,48 +449,51 @@ function placeTempPin(latlng) {
   clearTempPin();
   tempLatLng = latlng;
   const content = makeTempContent();
-  tempMarker = new kakao.maps.CustomOverlay({
-    position: latlng, content, xAnchor: 0.5, yAnchor: 1, clickable: true, zIndex: 10,
-  });
+  tempMarker = new PinOverlay(latlng, content);
   tempMarker.setMap(map);
   setupTempPinDrag(content, tempMarker);
   openAddSheet();
-  reverseGeocode(latlng.getLat(), latlng.getLng());
+  reverseGeocode(latlng.lat(), latlng.lng());
   setTimeout(() => map.panBy(0, 80), 100);
 }
 
 function setupTempPinDrag(el, overlay) {
   let dragging = false;
   el.addEventListener('pointerdown', e => {
-    e.preventDefault(); dragging = true; el.setPointerCapture(e.pointerId);
-    map.setDraggable(false);
+    e.preventDefault(); e.stopPropagation();
+    dragging = true; el.setPointerCapture(e.pointerId);
   }, { passive: false });
   el.addEventListener('pointermove', e => {
     if (!dragging) return;
+    e.stopPropagation();
     const rect = document.getElementById('map').getBoundingClientRect();
-    const pos  = map.getProjection().coordsFromContainerPoint(
-      new kakao.maps.Point(e.clientX - rect.left, e.clientY - rect.top)
-    );
+    const proj = overlay.getProjection();
+    if (!proj) return;
+    const pt  = new google.maps.Point(e.clientX - rect.left, e.clientY - rect.top);
+    const pos = proj.fromContainerPixelToLatLng(pt);
     overlay.setPosition(pos); tempLatLng = pos;
   });
-  el.addEventListener('pointerup', () => {
+  el.addEventListener('pointerup', e => {
     if (!dragging) return;
-    dragging = false; map.setDraggable(true);
-    reverseGeocode(tempLatLng.getLat(), tempLatLng.getLng());
+    dragging = false;
+    reverseGeocode(tempLatLng.lat(), tempLatLng.lng());
   });
 }
 
-function reverseGeocode(lat, lon) {
+function reverseGeocode(lat, lng) {
   const addrEl = document.getElementById('add-addr');
   addrEl.textContent = '주소 불러오는 중...';
-  new kakao.maps.services.Geocoder().coord2Address(lon, lat, (result, status) => {
-    if (status === kakao.maps.services.Status.OK) {
-      const addr = result[0].road_address?.address_name || result[0].address.address_name;
-      tempAddr = addr; addrEl.textContent = addr;
-      const nameEl = document.getElementById('add-name');
-      if (!nameEl.value) nameEl.value = shortName(addr);
-    } else { addrEl.textContent = ''; }
-  });
+  new google.maps.Geocoder().geocode(
+    { location: { lat, lng }, language: 'ko' },
+    (results, status) => {
+      if (status === 'OK' && results[0]) {
+        const addr = results[0].formatted_address.replace(/^대한민국\s*/, '');
+        tempAddr = addr; addrEl.textContent = addr;
+        const nameEl = document.getElementById('add-name');
+        if (!nameEl.value) nameEl.value = shortName(addr);
+      } else { addrEl.textContent = ''; }
+    }
+  );
 }
 
 // ── 시트 ─────────────────────────────────────────────────────────────────────
@@ -444,7 +507,10 @@ function openViewSheet(id) {
     if (c) markers[k].setContent(makeOverlayContent(c.category, k === id, c.id));
   });
   const card = cards.find(c => c.id === id);
-  if (card) { map.panTo(new kakao.maps.LatLng(card.lat, card.lon)); setTimeout(() => map.panBy(0, 100), 350); }
+  if (card) {
+    map.panTo({ lat: card.lat, lng: card.lon });
+    setTimeout(() => map.panBy(0, 100), 350);
+  }
 }
 
 function openAddSheet() { resetAddForm(); showPanel('p-add'); openSheet(); }
@@ -456,7 +522,7 @@ function showPanel(id) {
 function openSheet() {
   document.getElementById('sheet').classList.add('is-open');
   liftMapControls(true);
-  setTimeout(() => map && map.relayout(), 360);
+  setTimeout(() => map && google.maps.event.trigger(map, 'resize'), 360);
 }
 
 function closeSheet() {
@@ -467,7 +533,7 @@ function closeSheet() {
     if (c && markers[activeId]) markers[activeId].setContent(makeOverlayContent(c.category, false, c.id));
     activeId = null;
   }
-  setTimeout(() => map && map.relayout(), 360);
+  setTimeout(() => map && google.maps.event.trigger(map, 'resize'), 360);
 }
 
 function liftMapControls(up) {
@@ -518,12 +584,12 @@ async function populateView(id) {
 
 // ── 추가 폼 ───────────────────────────────────────────────────────────────────
 function resetAddForm() {
-  document.getElementById('add-name').value     = '';
+  document.getElementById('add-name').value       = '';
   document.getElementById('add-addr').textContent = '';
-  document.getElementById('add-brand').value    = '';
-  document.getElementById('add-price').value    = '';
-  document.getElementById('add-memo').value     = '';
-  document.getElementById('add-date').value     = today();
+  document.getElementById('add-brand').value      = '';
+  document.getElementById('add-price').value      = '';
+  document.getElementById('add-memo').value       = '';
+  document.getElementById('add-date').value       = today();
   document.getElementById('add-collection').value = '';
   document.getElementById('store-prev').innerHTML = '';
   document.getElementById('item-prev').innerHTML  = '';
@@ -613,8 +679,8 @@ async function saveCard() {
     region:        extractRegion(tempAddr),
     category:      selCat,
     itemStatus:    selStatus,
-    lat:           tempLatLng.getLat(),
-    lon:           tempLatLng.getLng(),
+    lat:           tempLatLng.lat(),
+    lon:           tempLatLng.lng(),
     hasStorePhoto: !!pendingStorePhoto,
     hasItemPhoto:  !!pendingItemPhoto,
     date:          document.getElementById('add-date').value,
@@ -692,7 +758,7 @@ async function shareActive() {
 function goMyLocation() {
   if (!navigator.geolocation) { toast('위치 권한이 필요해요'); return; }
   navigator.geolocation.getCurrentPosition(
-    p => { map.setCenter(new kakao.maps.LatLng(p.coords.latitude, p.coords.longitude)); map.setLevel(3); },
+    p => { map.setCenter({ lat: p.coords.latitude, lng: p.coords.longitude }); map.setZoom(15); },
     () => toast('위치를 가져올 수 없어요')
   );
 }
@@ -703,24 +769,32 @@ const doSearch = debounce(q => {
   if (!q.trim()) { hideDrop(); return; }
   drop.innerHTML = '<li class="no-res"><span class="spin"></span></li>';
   drop.classList.remove('hidden');
-  new kakao.maps.services.Places().keywordSearch(q, (result, status) => {
-    if (status === kakao.maps.services.Status.OK) {
-      searchResults = result; renderDrop(result);
-    } else {
-      drop.innerHTML = `<li class="no-res">${
-        status === kakao.maps.services.Status.ZERO_RESULT ? '검색 결과가 없어요' : '검색 중 오류가 발생했어요'
-      }</li>`;
-      drop.classList.remove('hidden');
+
+  const service = new google.maps.places.PlacesService(map);
+  service.textSearch(
+    { query: q, location: map.getCenter(), radius: 30000 },
+    (results, status) => {
+      if (status === google.maps.places.PlacesServiceStatus.OK && results.length) {
+        searchResults = results.slice(0, 5);
+        renderDrop(searchResults);
+      } else {
+        drop.innerHTML = `<li class="no-res">${
+          status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS
+            ? '검색 결과가 없어요'
+            : '검색 중 오류가 발생했어요'
+        }</li>`;
+        drop.classList.remove('hidden');
+      }
     }
-  }, { size: 5 });
+  );
 }, 420);
 
 function renderDrop(results) {
   const drop = document.getElementById('search-drop');
   drop.innerHTML = results.map((r, i) => `
     <li onclick="selectResult(${i})">
-      <span class="res-name">${esc(r.place_name)}</span>
-      <span class="res-full">${esc(r.road_address_name || r.address_name)}</span>
+      <span class="res-name">${esc(r.name)}</span>
+      <span class="res-full">${esc((r.formatted_address || r.vicinity || '').replace(/^대한민국\s*/, ''))}</span>
     </li>`).join('');
   drop.classList.remove('hidden');
 }
@@ -736,32 +810,31 @@ function clearSearch() {
 function selectResult(idx) {
   const r = searchResults[idx];
   if (!r) return;
-  const latlng = new kakao.maps.LatLng(parseFloat(r.y), parseFloat(r.x));
+  const latlng = r.geometry.location;
   clearSearch();
-  map.setCenter(latlng); map.setLevel(3);
+  map.setCenter(latlng); map.setZoom(15);
 
   addMode = true;
   document.getElementById('btn-fab').classList.add('is-cancel');
   document.getElementById('fab-plus').classList.add('hidden');
   document.getElementById('fab-x').classList.remove('hidden');
   document.getElementById('map').classList.add('add-mode');
+  map.setOptions({ draggableCursor: 'crosshair' });
 
   clearTempPin();
   tempLatLng = latlng;
-  tempAddr   = r.road_address_name || r.address_name;
+  tempAddr   = (r.formatted_address || r.vicinity || r.name).replace(/^대한민국\s*/, '');
 
   const content = makeTempContent();
-  tempMarker = new kakao.maps.CustomOverlay({
-    position: latlng, content, xAnchor: 0.5, yAnchor: 1, clickable: true, zIndex: 10,
-  });
+  tempMarker = new PinOverlay(latlng, content);
   tempMarker.setMap(map);
   setupTempPinDrag(content, tempMarker);
 
   setTimeout(() => {
     openAddSheet();
     setTimeout(() => {
-      document.getElementById('add-name').value = r.place_name;
-      document.getElementById('add-addr').textContent = r.road_address_name || r.address_name;
+      document.getElementById('add-name').value       = r.name;
+      document.getElementById('add-addr').textContent = tempAddr;
     }, 20);
     map.panBy(0, 80);
   }, 350);
@@ -857,18 +930,20 @@ function switchTab(tab) {
 
   if (isFeed)      renderFeed();
   else if (isColl) renderCollectionsView();
-  else             setTimeout(() => map && map.relayout(), 50);
+  else             setTimeout(() => map && google.maps.event.trigger(map, 'resize'), 50);
 }
 
 // ── 지역 추출 ─────────────────────────────────────────────────────────────────
 function extractRegion(addr) {
   if (!addr) return '기타';
-  const parts = addr.trim().split(/\s+/);
+  const a = addr.replace(/^대한민국\s*/, '').trim();
+  const parts = a.split(/\s+/);
   if (parts.length < 2) return parts[0] || '기타';
-  const p1 = parts[1], p2 = parts[2] || '';
-  if (/시$/.test(p1) && /구$/.test(p2)) return `${p1} ${p2}`;
-  if (/[구군시]$/.test(p1)) return `${parts[0]} ${p1}`;
-  return parts[0];
+  const p0 = parts[0], p1 = parts[1];
+  if (/시$/.test(p0) && /구$/.test(p1)) return `${p0} ${p1}`;
+  if (/[도특광]/.test(p0))              return `${p0} ${p1}`;
+  if (/[구군시]$/.test(p0))             return p0;
+  return p0;
 }
 
 // ── 피드 ─────────────────────────────────────────────────────────────────────
