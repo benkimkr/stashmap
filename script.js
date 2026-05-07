@@ -84,7 +84,13 @@ let sheetDrag   = false;
 let sheetStartY = 0;
 
 let currentTab = 'map';
-let feedFilter = { cat: 'all', status: 'all' };
+let feedFilter  = { cat: 'all', status: 'all', pr: 'all' };
+let feedScope   = 'mine';
+let feedViewMode = 'list';
+
+let selPriceRange = 0;
+let selRating     = 0;
+let tempHours     = '';
 
 // ── Firestore ─────────────────────────────────────────────────────────────────
 function initFirestore() {
@@ -574,6 +580,57 @@ async function populateView(id) {
   const parts   = [card.brand, card.price ? formatPrice(card.price) : ''].filter(Boolean);
   priceEl.textContent = parts.join('  ·  ');
 
+  // 가격대 태그
+  const prEl = document.getElementById('sv-pr');
+  if (card.priceRange) {
+    prEl.textContent = '₩'.repeat(card.priceRange);
+    prEl.classList.remove('hidden');
+  } else {
+    prEl.classList.add('hidden');
+  }
+
+  // 영업시간 / 별점 / 리뷰 / 체크인
+  const extraEl = document.getElementById('sv-extra');
+  const hoursEl  = document.getElementById('sv-hours');
+  const ratingEl = document.getElementById('sv-rating-row');
+  const reviewEl = document.getElementById('sv-review');
+  const checkinBtn = document.getElementById('sv-checkin-btn');
+  const checkinLabel = document.getElementById('sv-checkin-label');
+
+  let hasExtra = false;
+  if (card.hours) {
+    hoursEl.textContent = card.hours;
+    hoursEl.classList.remove('hidden');
+    hasExtra = true;
+  } else {
+    hoursEl.classList.add('hidden');
+  }
+  if (card.rating) {
+    ratingEl.innerHTML = [1,2,3,4,5].map(n =>
+      `<span class="${n <= card.rating ? 'sv-star-lit' : 'sv-star-empty'}">★</span>`
+    ).join('');
+    ratingEl.classList.remove('hidden');
+    hasExtra = true;
+  } else {
+    ratingEl.classList.add('hidden');
+  }
+  if (card.review) {
+    reviewEl.textContent = `"${card.review}"`;
+    reviewEl.classList.remove('hidden');
+    hasExtra = true;
+  } else {
+    reviewEl.classList.add('hidden');
+  }
+
+  const checkins = card.checkins || [];
+  const myCheckin = currentUser && checkins.includes(currentUser.id);
+  const checkinCount = checkins.length;
+  checkinLabel.textContent = `다녀왔어요${checkinCount ? ` (${checkinCount})` : ''}`;
+  checkinBtn.classList.toggle('active', myCheckin);
+  hasExtra = true;
+
+  extraEl.classList.toggle('hidden', !hasExtra);
+
   const photosEl = document.getElementById('sv-photos');
   photosEl.innerHTML = '';
   const [storeBlob, itemBlob] = await Promise.all([
@@ -602,12 +659,17 @@ function resetAddForm() {
   document.getElementById('store-upzone').style.display = '';
   document.getElementById('item-upzone').style.display  = '';
   pendingStorePhoto = null; pendingItemPhoto = null;
-  selCat = 'vintage'; selStatus = 'keep';
+  selCat = 'vintage'; selStatus = 'keep'; selPriceRange = 0; selRating = 0; tempHours = '';
   switchAddTab('store');
   document.querySelectorAll('.cat-pill').forEach(p =>
     p.classList.toggle('active', p.dataset.cat === 'vintage')
   );
   setStatus('keep');
+  document.querySelectorAll('.pr-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.star').forEach(s => s.classList.remove('lit'));
+  document.getElementById('add-review').value = '';
+  document.getElementById('add-hours-wrap').classList.add('hidden');
+  document.getElementById('add-hours-text').textContent = '';
 }
 
 function cancelAdd() { clearTempPin(); closeSheet(); }
@@ -691,6 +753,11 @@ async function saveCard() {
     hasItemPhoto:  !!pendingItemPhoto,
     date:          document.getElementById('add-date').value,
     memo:          document.getElementById('add-memo').value.trim(),
+    priceRange:    selPriceRange || null,
+    rating:        selRating     || null,
+    review:        document.getElementById('add-review').value.trim() || null,
+    hours:         tempHours     || null,
+    checkins:      [],
     createdAt:     new Date().toISOString(),
     userId:        currentUser.id,
     userNickname:  currentUser.nickname,
@@ -828,9 +895,9 @@ function selectResult(idx) {
 
   clearSearch();
 
-  // place_id로 좌표·주소 상세 조회
+  // place_id로 좌표·주소·영업시간 상세 조회
   new google.maps.places.PlacesService(map).getDetails(
-    { placeId: r.place_id, fields: ['geometry', 'name', 'formatted_address'] },
+    { placeId: r.place_id, fields: ['geometry', 'name', 'formatted_address', 'opening_hours'] },
     (place, status) => {
       if (status !== google.maps.places.PlacesServiceStatus.OK || !place?.geometry?.location) {
         toast('장소 정보를 불러올 수 없어요'); return;
@@ -849,6 +916,17 @@ function selectResult(idx) {
       clearTempPin();
       tempLatLng = latlng;
       tempAddr   = (place.formatted_address || place.name || '').replace(/^대한민국\s*/, '');
+
+      // 영업시간 자동 채우기
+      if (place.opening_hours?.weekday_text?.length) {
+        tempHours = place.opening_hours.weekday_text.join('\n');
+        const hoursWrap = document.getElementById('add-hours-wrap');
+        document.getElementById('add-hours-text').textContent = tempHours;
+        hoursWrap.classList.remove('hidden');
+      } else {
+        tempHours = '';
+        document.getElementById('add-hours-wrap').classList.add('hidden');
+      }
 
       const content = makeTempContent();
       tempMarker = new PinOverlay(latlng, content);
@@ -976,7 +1054,8 @@ function extractRegion(addr) {
 // ── 피드 ─────────────────────────────────────────────────────────────────────
 function renderFeed() {
   renderFeedFilters();
-  renderFeedList();
+  if (feedViewMode === 'moodboard') renderMoodboard();
+  else renderFeedList();
 }
 
 function renderFeedFilters() {
@@ -998,6 +1077,21 @@ function renderFeedFilters() {
   sep.className = 'filter-sep';
   bar.appendChild(sep);
 
+  chip('₩', 'pr', 1);
+  chip('₩₩', 'pr', 2);
+  chip('₩₩₩', 'pr', 3);
+  if (feedFilter.pr !== 'all') {
+    const allPr = document.createElement('button');
+    allPr.className = 'chip';
+    allPr.textContent = '전체 가격';
+    allPr.onclick = () => { feedFilter.pr = 'all'; renderFeed(); };
+    bar.appendChild(allPr);
+  }
+
+  const sep2 = document.createElement('div');
+  sep2.className = 'filter-sep';
+  bar.appendChild(sep2);
+
   chip('KEEP', 'status', 'keep');
   chip('BOUGHT', 'status', 'bought');
   if (feedFilter.status !== 'all') {
@@ -1009,13 +1103,23 @@ function renderFeedFilters() {
   }
 }
 
-function renderFeedList() {
-  const list = document.getElementById('feed-list');
+function getFilteredCards() {
   let filtered = [...cards];
+  if (feedScope === 'mine') filtered = filtered.filter(c => c.userId === currentUser?.id);
   if (feedFilter.cat    !== 'all') filtered = filtered.filter(c => c.category   === feedFilter.cat);
   if (feedFilter.status !== 'all') filtered = filtered.filter(c => c.itemStatus === feedFilter.status);
+  if (feedFilter.pr     !== 'all') filtered = filtered.filter(c => c.priceRange === feedFilter.pr);
   filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return filtered;
+}
 
+function renderFeedList() {
+  const list  = document.getElementById('feed-list');
+  const mood  = document.getElementById('moodboard');
+  list.classList.remove('hidden');
+  mood.classList.add('hidden');
+
+  const filtered = getFilteredCards();
   if (!filtered.length) {
     list.innerHTML = '<p class="feed-empty">저장된 스팟이 없어요</p>';
     return;
@@ -1024,23 +1128,56 @@ function renderFeedList() {
   setTimeout(loadFeedPhotos, 80);
 }
 
+async function renderMoodboard() {
+  const list = document.getElementById('feed-list');
+  const mood = document.getElementById('moodboard');
+  list.classList.add('hidden');
+  mood.classList.remove('hidden');
+
+  const filtered = getFilteredCards();
+  mood.innerHTML = '';
+
+  for (const card of filtered) {
+    const item = document.createElement('div');
+    item.className = 'mood-item';
+    item.onclick = () => openFromFeed(card.id);
+
+    if (card.hasStorePhoto || card.hasItemPhoto) {
+      const blob = await photoDB.get(`${card.id}_store`).catch(() => null)
+                || await photoDB.get(`${card.id}_item`).catch(() => null);
+      if (blob) {
+        item.innerHTML = `<img src="${URL.createObjectURL(blob)}" alt="${esc(card.name)}" loading="lazy">`;
+      } else {
+        item.innerHTML = `<div class="mood-item-empty">${CATS[card.category]?.emoji || '◈'}<br>${esc(card.name)}</div>`;
+      }
+    } else {
+      item.innerHTML = `<div class="mood-item-empty">${CATS[card.category]?.emoji || '◈'}<br>${esc(card.name)}</div>`;
+    }
+    mood.appendChild(item);
+  }
+  if (!filtered.length) mood.innerHTML = '<p class="feed-empty" style="grid-column:1/-1">저장된 스팟이 없어요</p>';
+}
+
 function feedCard(card) {
   const cat    = CATS[card.category] || CATS.vintage;
   const col    = card.collectionId ? myCollections.find(c => c.id === card.collectionId) : null;
   const bought = card.itemStatus === 'bought';
+  const stars  = card.rating ? '★'.repeat(card.rating) + '☆'.repeat(5 - card.rating) : '';
   return `<div class="fc${bought ? ' is-bought' : ''}" onclick="openFromFeed('${card.id}')">
     <div class="fc-photo-wrap" id="fc-photo-${card.id}"></div>
     <div class="fc-body">
       <div class="fc-top-row">
         <span class="fc-cat" style="color:${cat.color}">${cat.emoji} ${cat.label}</span>
+        ${card.priceRange ? `<span class="fc-pr">${'₩'.repeat(card.priceRange)}</span>` : ''}
         ${col ? `<span class="fc-coll"># ${esc(col.name)}</span>` : ''}
         <span class="fc-status ${bought ? 'bought' : 'keep'}">${bought ? 'BOUGHT' : 'KEEP'}</span>
       </div>
       <div class="fc-name">${esc(card.name)}</div>
+      ${stars ? `<div class="fc-stars">${stars}</div>` : ''}
       ${card.brand ? `<div class="fc-brand">${esc(card.brand)}</div>` : ''}
       ${card.price ? `<div class="fc-price">${formatPrice(card.price)}</div>` : ''}
+      ${card.review ? `<div class="fc-memo">"${esc(card.review)}"</div>` : card.memo ? `<div class="fc-memo">${esc(card.memo)}</div>` : ''}
       ${card.address ? `<div class="fc-addr">${esc(card.address)}</div>` : ''}
-      ${card.memo   ? `<div class="fc-memo">${esc(card.memo)}</div>`   : ''}
     </div>
   </div>`;
 }
@@ -1058,6 +1195,72 @@ async function loadFeedPhotos() {
 }
 
 function openFromFeed(id) { switchTab('map'); setTimeout(() => openViewSheet(id), 120); }
+
+function setFeedScope(scope) {
+  feedScope = scope;
+  document.getElementById('scope-mine').classList.toggle('active', scope === 'mine');
+  document.getElementById('scope-all').classList.toggle('active', scope === 'all');
+  renderFeed();
+}
+
+function setFeedViewMode(mode) {
+  feedViewMode = mode;
+  document.getElementById('vt-list').classList.toggle('active', mode === 'list');
+  document.getElementById('vt-mood').classList.toggle('active', mode === 'moodboard');
+  renderFeed();
+}
+
+function setPriceRange(val) {
+  selPriceRange = selPriceRange === val ? 0 : val;
+  document.querySelectorAll('.pr-btn').forEach(b =>
+    b.classList.toggle('active', parseInt(b.dataset.pr) === selPriceRange)
+  );
+}
+
+function setRating(n) {
+  selRating = selRating === n ? 0 : n;
+  document.querySelectorAll('.star').forEach(s =>
+    s.classList.toggle('lit', parseInt(s.dataset.n) <= selRating)
+  );
+}
+
+async function toggleCheckin() {
+  if (!activeId || !currentUser) return;
+  const card = cards.find(c => c.id === activeId);
+  if (!card) return;
+  const checkins = card.checkins || [];
+  const isIn = checkins.includes(currentUser.id);
+  try {
+    await db.collection('spots').doc(activeId).update({
+      checkins: isIn
+        ? firebase.firestore.FieldValue.arrayRemove(currentUser.id)
+        : firebase.firestore.FieldValue.arrayUnion(currentUser.id),
+    });
+    toast(isIn ? '체크인을 취소했어요' : '다녀왔어요 체크인!');
+  } catch { toast('처리에 실패했어요'); }
+}
+
+function showNearby() {
+  const card = cards.find(c => c.id === activeId);
+  if (!card) return;
+  const url = `https://www.google.com/maps/search/패션+편집샵/@${card.lat},${card.lon},15z`;
+  window.open(url, '_blank', 'noopener');
+}
+
+async function shareCityMap() {
+  const card = cards.find(c => c.id === activeId);
+  if (!card) return;
+  const region = card.region || extractRegion(card.address);
+  const regionCards = cards.filter(c => c.region === region || extractRegion(c.address) === region);
+  const lines = regionCards.map(c => `${CATS[c.category]?.emoji || '◈'} ${c.name} — https://maps.google.com/?q=${c.lat},${c.lon}`);
+  const text = `📍 ${region} 패션 스팟 (${lines.length}곳)\n\n${lines.join('\n')}\n\nvia Stashmap`;
+  if (navigator.share) {
+    try { await navigator.share({ title: `${region} 쇼핑 지도`, text }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  await navigator.clipboard.writeText(text).catch(() => {});
+  toast(`${region} 스팟 ${lines.length}곳이 복사됐어요`);
+}
 
 // ── 컬렉션 ───────────────────────────────────────────────────────────────────
 function renderCollectionsView() {

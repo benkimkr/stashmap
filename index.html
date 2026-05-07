@@ -106,16 +106,31 @@
       <div class="sv-meta-row">
         <span class="sv-status" id="sv-status"></span>
         <span class="sv-price" id="sv-price"></span>
+        <span class="sv-pr hidden" id="sv-pr"></span>
       </div>
       <div class="sv-meta">
         <span class="sv-date" id="sv-date"></span>
         <p class="sv-memo" id="sv-memo"></p>
+      </div>
+      <!-- 영업시간 / 별점·리뷰 / 체크인 -->
+      <div class="sv-extra hidden" id="sv-extra">
+        <div class="sv-hours hidden" id="sv-hours"></div>
+        <div class="sv-rating-row hidden" id="sv-rating-row"></div>
+        <p class="sv-review hidden" id="sv-review"></p>
+        <button class="sv-checkin-btn" id="sv-checkin-btn" onclick="toggleCheckin()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          <span id="sv-checkin-label">다녀왔어요</span>
+        </button>
       </div>
       <div class="sv-btns">
         <a class="sv-btn" id="sv-maplink" href="#" target="_blank" rel="noopener">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>
           지도
         </a>
+        <button class="sv-btn" onclick="showNearby()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+          근처
+        </button>
         <button class="sv-btn" onclick="toggleStatus()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
           상태
@@ -123,6 +138,10 @@
         <button class="sv-btn" onclick="shareActive()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/></svg>
           공유
+        </button>
+        <button class="sv-btn" onclick="shareCityMap()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+          도시
         </button>
         <button class="sv-btn sv-del" onclick="deleteActive()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
@@ -181,6 +200,34 @@
         <button class="st-btn"        id="st-bought" onclick="setStatus('bought')">BOUGHT</button>
       </div>
 
+      <!-- 가격대 -->
+      <div class="pr-toggle" id="pr-toggle">
+        <span class="pr-label">가격대</span>
+        <button class="pr-btn" data-pr="1" onclick="setPriceRange(1)">₩</button>
+        <button class="pr-btn" data-pr="2" onclick="setPriceRange(2)">₩₩</button>
+        <button class="pr-btn" data-pr="3" onclick="setPriceRange(3)">₩₩₩</button>
+      </div>
+
+      <!-- 별점 + 한줄 리뷰 -->
+      <div class="star-row" id="star-row">
+        <span class="pr-label">별점</span>
+        <button class="star" data-n="1" onclick="setRating(1)">★</button>
+        <button class="star" data-n="2" onclick="setRating(2)">★</button>
+        <button class="star" data-n="3" onclick="setRating(3)">★</button>
+        <button class="star" data-n="4" onclick="setRating(4)">★</button>
+        <button class="star" data-n="5" onclick="setRating(5)">★</button>
+      </div>
+      <input class="s-inp" type="text" id="add-review" placeholder="한줄 리뷰 (선택)" autocomplete="off" />
+
+      <!-- 영업시간 자동 표시 -->
+      <div class="hours-hint hidden" id="add-hours-wrap">
+        <div class="hours-label-row">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--tmut)"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
+          <span>영업시간</span>
+        </div>
+        <p class="hours-text" id="add-hours-text"></p>
+      </div>
+
       <select class="s-inp s-sel" id="add-collection">
         <option value="">개인 스태시</option>
       </select>
@@ -196,8 +243,23 @@
 
   <!-- 피드 뷰 -->
   <div class="feed-view hidden" id="feed-view">
+    <div class="feed-scope-bar" id="feed-scope-bar">
+      <div class="scope-btns">
+        <button class="scope-btn active" id="scope-mine" onclick="setFeedScope('mine')">내 스팟</button>
+        <button class="scope-btn" id="scope-all" onclick="setFeedScope('all')">컬렉션 전체</button>
+      </div>
+      <div class="view-mode-toggle">
+        <button class="vt-btn active" id="vt-list" onclick="setFeedViewMode('list')" title="리스트">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+        </button>
+        <button class="vt-btn" id="vt-mood" onclick="setFeedViewMode('moodboard')" title="무드보드">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5v4h2V5h4V3H5c-1.1 0-2 .9-2 2zm2 10H3v4c0 1.1.9 2 2 2h4v-2H5v-4zm14 4h-4v2h4c1.1 0 2-.9 2-2v-4h-2v4zm0-16h-4v2h4v4h2V5c0-1.1-.9-2-2-2z"/></svg>
+        </button>
+      </div>
+    </div>
     <div class="feed-filter-bar" id="feed-filter-bar"></div>
     <div class="feed-list" id="feed-list"></div>
+    <div class="moodboard hidden" id="moodboard"></div>
   </div>
 
   <!-- 컬렉션 뷰 -->
