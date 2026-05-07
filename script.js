@@ -302,6 +302,25 @@ function logout() {
 }
 
 // ── 부트스트랩 ────────────────────────────────────────────────────────────────
+let _domReady  = false;
+let _mapsReady = false;
+
+// Google Maps async 콜백 (index.html의 callback=_gmapsNoop 대신 사용)
+window._gmapsNoop = function () {
+  _mapsReady = true;
+  _tryInitMap();
+};
+
+function _tryInitMap() {
+  if (!_domReady || !_mapsReady) return;
+  try {
+    initMap();
+    if (cards.length) refreshPins(); // DOM 준비 전에 이미 로드된 카드가 있을 경우 핀 추가
+  } catch (e) {
+    console.error('[map init]', e);
+  }
+}
+
 document.addEventListener('click', e => {
   const wrap = document.getElementById('profile-wrap');
   const menu = document.getElementById('profile-menu');
@@ -311,16 +330,26 @@ document.addEventListener('click', e => {
 
 document.addEventListener('DOMContentLoaded', async () => {
   await photoDB.open().catch(() => {});
+  _domReady = true;
+
   try {
     initFirestore();
-    initMap();
     buildCatPills();
     setupListeners();
     document.getElementById('add-date').value = today();
   } catch (e) {
     console.error('[init]', e);
   }
-  initAuth();
+
+  _tryInitMap(); // Maps가 이미 로드됐을 경우 즉시 지도 초기화
+
+  try {
+    initAuth();
+  } catch (e) {
+    console.error('[auth]', e);
+    showLoginScreen();
+  }
+
   requestAnimationFrame(() => document.body.classList.add('ready'));
 });
 
