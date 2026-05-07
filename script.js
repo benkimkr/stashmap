@@ -53,36 +53,8 @@ const photoDB = (() => {
   return { open, save, get, remove };
 })();
 
-// ── 구글 맵 커스텀 오버레이 ───────────────────────────────────────────────────
-class PinOverlay extends google.maps.OverlayView {
-  constructor(position, el) {
-    super();
-    this._pos = position;
-    this._el  = el;
-  }
-  onAdd() {
-    this.getPanes().overlayMouseTarget.appendChild(this._el);
-  }
-  draw() {
-    const proj = this.getProjection();
-    if (!proj) return;
-    const pt = proj.fromLatLngToDivPixel(this._pos);
-    if (!pt) return;
-    const s     = this._el.style;
-    s.position  = 'absolute';
-    s.left      = `${pt.x}px`;
-    s.top       = `${pt.y}px`;
-    s.transform = 'translate(-50%, -100%)';
-  }
-  onRemove() { this._el.parentNode?.removeChild(this._el); }
-  setContent(el) {
-    if (this._el.parentNode) this._el.parentNode.replaceChild(el, this._el);
-    this._el = el;
-    this.draw();
-  }
-  setPosition(pos) { this._pos = pos; this.draw(); }
-  getPosition()    { return this._pos; }
-}
+// ── 구글 맵 커스텀 오버레이 (initMap 호출 후 정의) ───────────────────────────
+let PinOverlay;
 
 // ── 다크 맵 스타일 ────────────────────────────────────────────────────────────
 const DARK_MAP_STYLE = [
@@ -354,6 +326,37 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ── 지도 ─────────────────────────────────────────────────────────────────────
 function initMap() {
+  // google.maps.OverlayView 는 Maps API 완전 로드 후에만 상속 가능
+  PinOverlay = class extends google.maps.OverlayView {
+    constructor(position, el) {
+      super();
+      this._pos = position;
+      this._el  = el;
+    }
+    onAdd() {
+      this.getPanes().overlayMouseTarget.appendChild(this._el);
+    }
+    draw() {
+      const proj = this.getProjection();
+      if (!proj) return;
+      const pt = proj.fromLatLngToDivPixel(this._pos);
+      if (!pt) return;
+      const s     = this._el.style;
+      s.position  = 'absolute';
+      s.left      = `${pt.x}px`;
+      s.top       = `${pt.y}px`;
+      s.transform = 'translate(-50%, -100%)';
+    }
+    onRemove() { this._el.parentNode?.removeChild(this._el); }
+    setContent(el) {
+      if (this._el.parentNode) this._el.parentNode.replaceChild(el, this._el);
+      this._el = el;
+      this.draw();
+    }
+    setPosition(pos) { this._pos = pos; this.draw(); }
+    getPosition()    { return this._pos; }
+  };
+
   map = new google.maps.Map(document.getElementById('map'), {
     center:           { lat: 37.5665, lng: 126.9780 },
     zoom:             12,
