@@ -56,31 +56,6 @@ const photoDB = (() => {
 // ── 구글 맵 커스텀 오버레이 (initMap 호출 후 정의) ───────────────────────────
 let PinOverlay;
 
-// ── 다크 맵 스타일 ────────────────────────────────────────────────────────────
-const DARK_MAP_STYLE = [
-  { elementType: 'geometry',            stylers: [{ color: '#1a1a1a' }] },
-  { elementType: 'labels.icon',         stylers: [{ visibility: 'off' }] },
-  { elementType: 'labels.text.fill',    stylers: [{ color: '#666666' }] },
-  { elementType: 'labels.text.stroke',  stylers: [{ color: '#0c0c0c' }] },
-  { featureType: 'administrative',           elementType: 'geometry',          stylers: [{ color: '#252525' }] },
-  { featureType: 'administrative.country',   elementType: 'labels.text.fill',  stylers: [{ color: '#888888' }] },
-  { featureType: 'administrative.land_parcel',                                 stylers: [{ visibility: 'off' }] },
-  { featureType: 'administrative.locality',  elementType: 'labels.text.fill',  stylers: [{ color: '#bbbbbb' }] },
-  { featureType: 'poi',                      elementType: 'geometry',          stylers: [{ color: '#1e1e1e' }] },
-  { featureType: 'poi',                      elementType: 'labels.text.fill',  stylers: [{ color: '#555555' }] },
-  { featureType: 'poi.park',                 elementType: 'geometry',          stylers: [{ color: '#161b16' }] },
-  { featureType: 'poi.park',                 elementType: 'labels.text.fill',  stylers: [{ color: '#3d5c3d' }] },
-  { featureType: 'road',                     elementType: 'geometry',          stylers: [{ color: '#2c2c2c' }] },
-  { featureType: 'road',                     elementType: 'geometry.stroke',   stylers: [{ color: '#1a1a1a' }] },
-  { featureType: 'road',                     elementType: 'labels.text.fill',  stylers: [{ color: '#777777' }] },
-  { featureType: 'road.highway',             elementType: 'geometry',          stylers: [{ color: '#3c3c3c' }] },
-  { featureType: 'road.highway',             elementType: 'geometry.stroke',   stylers: [{ color: '#222222' }] },
-  { featureType: 'road.highway',             elementType: 'labels.text.fill',  stylers: [{ color: '#999999' }] },
-  { featureType: 'transit',                  elementType: 'geometry',          stylers: [{ color: '#1a1a1a' }] },
-  { featureType: 'transit.station',          elementType: 'labels.text.fill',  stylers: [{ color: '#555555' }] },
-  { featureType: 'water',                    elementType: 'geometry',          stylers: [{ color: '#0d0f12' }] },
-  { featureType: 'water',                    elementType: 'labels.text.fill',  stylers: [{ color: '#3a3a3a' }] },
-];
 
 // ── 상태 ─────────────────────────────────────────────────────────────────────
 let map;
@@ -392,7 +367,6 @@ function initMap() {
     disableDefaultUI: true,
     gestureHandling:  'greedy',
     clickableIcons:   false,
-    styles:           DARK_MAP_STYLE,
   });
 
   if (navigator.geolocation) {
@@ -796,24 +770,32 @@ function goMyLocation() {
 }
 
 // ── 검색 ─────────────────────────────────────────────────────────────────────
+// AutocompleteService: map 인스턴스 불필요 — Places API textSearch 의존성 제거
 const doSearch = debounce(q => {
   const drop = document.getElementById('search-drop');
   if (!q.trim()) { hideDrop(); return; }
+
+  if (!window.google?.maps?.places) {
+    drop.innerHTML = '<li class="no-res">지도 로딩 중입니다...</li>';
+    drop.classList.remove('hidden');
+    return;
+  }
+
   drop.innerHTML = '<li class="no-res"><span class="spin"></span></li>';
   drop.classList.remove('hidden');
 
-  const service = new google.maps.places.PlacesService(map);
-  service.textSearch(
-    { query: q, location: map.getCenter(), radius: 30000 },
-    (results, status) => {
-      if (status === google.maps.places.PlacesServiceStatus.OK && results.length) {
-        searchResults = results.slice(0, 5);
+  new google.maps.places.AutocompleteService().getPlacePredictions(
+    { input: q, language: 'ko', componentRestrictions: { country: 'kr' } },
+    (predictions, status) => {
+      const S = google.maps.places.PlacesServiceStatus;
+      if (status === S.OK && predictions?.length) {
+        searchResults = predictions.slice(0, 5);
         renderDrop(searchResults);
       } else {
         drop.innerHTML = `<li class="no-res">${
-          status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS
-            ? '검색 결과가 없어요'
-            : '검색 중 오류가 발생했어요'
+          status === S.ZERO_RESULTS    ? '검색 결과가 없어요'          :
+          status === S.REQUEST_DENIED  ? 'Places API가 비활성화됐어요' :
+                                         '검색 중 오류가 발생했어요'
         }</li>`;
         drop.classList.remove('hidden');
       }
@@ -821,12 +803,12 @@ const doSearch = debounce(q => {
   );
 }, 420);
 
-function renderDrop(results) {
+function renderDrop(predictions) {
   const drop = document.getElementById('search-drop');
-  drop.innerHTML = results.map((r, i) => `
+  drop.innerHTML = predictions.map((p, i) => `
     <li onclick="selectResult(${i})">
-      <span class="res-name">${esc(r.name)}</span>
-      <span class="res-full">${esc((r.formatted_address || r.vicinity || '').replace(/^대한민국\s*/, ''))}</span>
+      <span class="res-name">${esc(p.structured_formatting?.main_text || p.description)}</span>
+      <span class="res-full">${esc(p.structured_formatting?.secondary_text || '')}</span>
     </li>`).join('');
   drop.classList.remove('hidden');
 }
@@ -840,36 +822,49 @@ function clearSearch() {
 }
 
 function selectResult(idx) {
-  const r = searchResults[idx];
+  const r = searchResults[idx]; // AutocompletePrediction
   if (!r) return;
-  const latlng = r.geometry.location;
+  if (!map) { toast('지도가 아직 로딩 중이에요'); return; }
+
   clearSearch();
-  map.setCenter(latlng); map.setZoom(15);
 
-  addMode = true;
-  document.getElementById('btn-fab').classList.add('is-cancel');
-  document.getElementById('fab-plus').classList.add('hidden');
-  document.getElementById('fab-x').classList.remove('hidden');
-  document.getElementById('map').classList.add('add-mode');
-  map.setOptions({ draggableCursor: 'crosshair' });
+  // place_id로 좌표·주소 상세 조회
+  new google.maps.places.PlacesService(map).getDetails(
+    { placeId: r.place_id, fields: ['geometry', 'name', 'formatted_address'] },
+    (place, status) => {
+      if (status !== google.maps.places.PlacesServiceStatus.OK || !place?.geometry?.location) {
+        toast('장소 정보를 불러올 수 없어요'); return;
+      }
 
-  clearTempPin();
-  tempLatLng = latlng;
-  tempAddr   = (r.formatted_address || r.vicinity || r.name).replace(/^대한민국\s*/, '');
+      const latlng = place.geometry.location;
+      map.setCenter(latlng); map.setZoom(15);
 
-  const content = makeTempContent();
-  tempMarker = new PinOverlay(latlng, content);
-  tempMarker.setMap(map);
-  setupTempPinDrag(content, tempMarker);
+      addMode = true;
+      document.getElementById('btn-fab').classList.add('is-cancel');
+      document.getElementById('fab-plus').classList.add('hidden');
+      document.getElementById('fab-x').classList.remove('hidden');
+      document.getElementById('map').classList.add('add-mode');
+      map.setOptions({ draggableCursor: 'crosshair' });
 
-  setTimeout(() => {
-    openAddSheet();
-    setTimeout(() => {
-      document.getElementById('add-name').value       = r.name;
-      document.getElementById('add-addr').textContent = tempAddr;
-    }, 20);
-    map.panBy(0, 80);
-  }, 350);
+      clearTempPin();
+      tempLatLng = latlng;
+      tempAddr   = (place.formatted_address || place.name || '').replace(/^대한민국\s*/, '');
+
+      const content = makeTempContent();
+      tempMarker = new PinOverlay(latlng, content);
+      tempMarker.setMap(map);
+      setupTempPinDrag(content, tempMarker);
+
+      setTimeout(() => {
+        openAddSheet();
+        setTimeout(() => {
+          document.getElementById('add-name').value       = place.name || '';
+          document.getElementById('add-addr').textContent = tempAddr;
+        }, 20);
+        map.panBy(0, 80);
+      }, 350);
+    }
+  );
 }
 
 // ── 이벤트 리스너 ─────────────────────────────────────────────────────────────
